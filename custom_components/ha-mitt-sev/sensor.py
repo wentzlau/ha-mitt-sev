@@ -15,6 +15,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
+    
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -24,11 +25,7 @@ from homeassistant.helpers.typing import HomeAssistantType, ConfigType
 from homeassistant.components import sensor
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.const import (
-    CONF_MONITORED_CONDITIONS, CONF_API_KEY, CONF_LATITUDE, CONF_LONGITUDE,
-    TEMP_FAHRENHEIT, TEMP_CELSIUS, LENGTH_INCHES,
-    LENGTH_FEET, LENGTH_MILLIMETERS, LENGTH_METERS, SPEED_MILES_PER_HOUR, SPEED_KILOMETERS_PER_HOUR,
-    PERCENTAGE, PRESSURE_INHG, PRESSURE_MBAR, PRECIPITATION_INCHES_PER_HOUR, PRECIPITATION_MILLIMETERS_PER_HOUR,
-    ATTR_ATTRIBUTION)
+     CONF_API_KEY,ATTR_ATTRIBUTION)
 from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -44,8 +41,8 @@ _LOGGER = logging.getLogger("mitt_sev")
 SEV_URL = "https://api.sev.fo/api/CustomerRESTApi/"
 CONF_USER= "user_name"
 CONF_API_KEY= "api_key"
-
-MIN_TIME_BETWEEN_UPDATES = timedelta(minutes=30)
+#SCAN_INTERVAL = timedelta(minutes=60)
+MIN_TIME_BETWEEN_UPDATES = timedelta(minutes=60)
 CONF_ATTRIBUTION = "Data provided by api.sev.fo"
 
 
@@ -59,7 +56,8 @@ class SevSensorConfig:
     def __init__(self, friendly_name, value,
                  unit_of_measurement=None, entity_picture=None,
                  icon="mdi:gauge", device_state_attributes=None,
-                 device_class=None):
+                 device_class=None,
+                 state_class = None):
         """Constructor.
         Args:
             friendly_name (string|func): Friendly name
@@ -79,14 +77,14 @@ class SevSensorConfig:
         self.icon = icon
         self.device_state_attributes = device_state_attributes or {}
         self.device_class = device_class
-        
+        self.state_class = state_class
 
 
 class EnergyCurrentConditionsSensorConfig(SevSensorConfig):
     """Helper for defining sensor configurations for current conditions."""
 
     def __init__(self, friendly_name, meter_id, sensor_type, icon="mdi:gauge",
-                 unit_of_measurement=None, device_class=None):
+                 unit_of_measurement=None, device_class=None, state_class=None):
         """Constructor.
         Args:
             friendly_name (string|func): Friendly name of sensor
@@ -103,19 +101,21 @@ class EnergyCurrentConditionsSensorConfig(SevSensorConfig):
             icon=icon,
             unit_of_measurement= unit_of_measurement,
             device_state_attributes={
-                'date': lambda wu: wu.data[meter_id][sensor_type]['time']
+                'date': lambda wu: wu.data[meter_id][sensor_type]['time'],
+                'last_reset': None
             },
-            device_class=device_class
+            device_class=device_class,
+            state_class = state_class
         )
 
 SENSOR_TYPES = {
     'kwh': {
         'name': 'Energy consumption, last hour',
-        'unit_of_measurement': 'kwh',
+        'unit_of_measurement': 'kWh',
         'icon': "mdi:home-lightning-bolt",
-        'device_class': "power_factor",
+        'device_class': SensorDeviceClass.ENERGY,
         'state_class': "measurement",
-
+        "reset": False
     },
     'co2': {
         'name': 'Estimated co2 usage, last hour',
@@ -123,28 +123,41 @@ SENSOR_TYPES = {
         'icon':"mdi:molecule-co2",
         'device_class': "power_factor",
         'state_class': "measurement",
+        "reset": False
     },
     'cost': {
         'name': 'Estimated cost, last hour',
         'unit_of_measurement': 'kr',
         'icon': "mdi:circle-multiple",
-        'device_class': "power_factor",
+        'device_class': "monetary",
         'state_class': "measurement",
+        "reset": False
     },
     'kwh_today': {
         'name': 'Energy consumption, today',
-        'unit_of_measurement': 'kwh',
+        'unit_of_measurement': 'kWh',
         'icon': "mdi:home-lightning-bolt",
-        'device_class': "power_factor",
-        'state_class': "measurement",
+        'device_class': SensorDeviceClass.ENERGY,
+        'state_class': "total",
+        "reset": True
+
+    },
+    'kwh_month': {
+        'name': 'Energy consumption, this month',
+        'unit_of_measurement': 'kWh',
+        'icon': "mdi:home-lightning-bolt",
+        'device_class': SensorDeviceClass.ENERGY,
+        'state_class': "total",
+        "reset": True
 
     },
     'kwh_total': {
         'name': 'Energy consumption, cumulative',
-        'unit_of_measurement': 'kwh',
+        'unit_of_measurement': 'kWh',
         'icon': "mdi:home-lightning-bolt",
-        'device_class': "power_factor",
-        'state_class': "measurement",
+        'device_class': SensorDeviceClass.ENERGY,
+        'state_class': "total",
+        "reset": False
 
     },
     'co2_today': {
@@ -152,14 +165,32 @@ SENSOR_TYPES = {
         'unit_of_measurement': 'kg',
         'icon':"mdi:molecule-co2",
         'device_class': "power_factor",
-        'state_class': "measurement",
+        'state_class': "total",
+        "reset": True
+    },
+    'co2_month': {
+        'name': 'Estimated co2 usage, this',
+        'unit_of_measurement': 'kg',
+        'icon':"mdi:molecule-co2",
+        'device_class': "power_factor",
+        'state_class': "total",
+        "reset": True
     },
     'cost_today': {
         'name': 'Estimated cost, today',
         'unit_of_measurement': 'kr',
         'icon': "mdi:circle-multiple",
-        'device_class': "power_factor",
+        'device_class': "monetary",
         'state_class': "measurement",
+        "reset": True
+    },
+    'cost_month': {
+        'name': 'Estimated cost, this month',
+        'unit_of_measurement': 'kr',
+        'icon': "mdi:circle-multiple",
+        'device_class': "monetary",
+        'state_class': "measurement",
+        "reset": True
     }
 }
 
@@ -203,9 +234,12 @@ async def async_setup_platform(hass: HomeAssistantType, config: ConfigType,
                 sensors.append(SevSensor(hass, rest, 'co2', inst_id, meter_id, meter_name, meter_type))
                 sensors.append(SevSensor(hass, rest, 'cost', inst_id, meter_id, meter_name, meter_type))
                 sensors.append(SevSensor(hass, rest, 'kwh_today', inst_id, meter_id, meter_name, meter_type))
+                sensors.append(SevSensor(hass, rest, 'kwh_month', inst_id, meter_id, meter_name, meter_type))
                 sensors.append(SevSensor(hass, rest, 'kwh_total', inst_id, meter_id, meter_name, meter_type))
                 sensors.append(SevSensor(hass, rest, 'co2_today', inst_id, meter_id, meter_name, meter_type))
+                sensors.append(SevSensor(hass, rest, 'co2_month', inst_id, meter_id, meter_name, meter_type))
                 sensors.append(SevSensor(hass, rest, 'cost_today', inst_id, meter_id, meter_name, meter_type))
+                sensors.append(SevSensor(hass, rest, 'cost_month', inst_id, meter_id, meter_name, meter_type))
             
 
     async_add_entities(sensors, True)
@@ -227,7 +261,6 @@ class SevSensor(SensorEntity):
         self.rest = rest
         self._sensor_type = sensor_type
         self._state = None
-        self._state_class = "measurement"
         self._attributes = {
             ATTR_ATTRIBUTION: CONF_ATTRIBUTION,
         }
@@ -236,11 +269,11 @@ class SevSensor(SensorEntity):
         self._unit_of_measurement = self._cfg_expand("unit_of_measurement")
         # This is only the suggested entity id, it might get changed by
         # the entity registry later.
-        unique_id = 'd_mitt_sev_' + str(inst_id) + '_' + str(meter_id) + '_'  + sensor_type
+        unique_id = 'e_mitt_sev_' + str(inst_id) + '_' + str(meter_id) + '_'  + sensor_type
         self.entity_id = sensor.ENTITY_ID_FORMAT.format('mitt_sev_' + str(inst_id) + '_' + str(meter_id) + '-' + sensor_type)
         self._unique_id = unique_id
         self._device_class = self._cfg_expand("device_class")
-
+        self._state_class = self._cfg_expand("state_class")
 
     def _cfg_expand(self, what, default=None):
         """Parse and return sensor data."""
@@ -251,9 +284,9 @@ class SevSensor(SensorEntity):
             sensor_type=self._sensor_type,
             icon = sensor_info['icon'],
             unit_of_measurement=sensor_info['unit_of_measurement'],
-            device_class= sensor_info['device_class']
+            device_class= sensor_info['device_class'],
+            state_class = sensor_info['state_class']
         )
-        #SENSOR_TYPES[self._condition]
         val = getattr(cfg, what)
         if not callable(val):
             return val
@@ -352,8 +385,9 @@ class SEVData:
         self.api_key = api_key
         self.data = None
         self.token = None
+        self.token_time = datetime.now()
         self._session = async_get_clientsession(self._hass)
-    
+        self.last_reading = datetime.now()
 
     def tofloat(self, sval):
         return float(sval.replace(",", "."))
@@ -389,11 +423,13 @@ class SEVData:
                 byte_data += chunk   
             
             self.token = byte_data.decode('utf8')
+            self.token_time = datetime.now()
         else:
             return None
     
     async def async_post(self, api, data):
-        if not self.token:
+        elapsed_time  = datetime.now() - self.token_time
+        if not self.token or elapsed_time.seconds > 3*3600 :
             await self.async_get_token()
         if not self.token:
             return None
@@ -441,8 +477,13 @@ class SEVData:
     @Throttle(MIN_TIME_BETWEEN_UPDATES)
     async def async_update(self):
         _LOGGER.info("SEVData async_update: %s" , METERS)
-        date_from = datetime.today().strftime('%Y-%m-%dT00:00:00')
-        date_to = datetime.today().strftime('%Y-%m-%dT%H:%M:%S')
+        do_reset = False
+        today = datetime.today()
+        tomorrow = today + timedelta(days=1)
+        month_start = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        date_from = month_start.strftime('%Y-%m-%dT00:00:00')
+        date_to = tomorrow.strftime('%Y-%m-%dT%H:%M:%S')
         response ={
             "kwh": None,
             "co2": None,
@@ -473,6 +514,9 @@ class SEVData:
                 "to_date": date_to
             }
         )
+        
+        #with open("sev-data-"+  datetime.now().strftime("%Y%m%d-%H%M%S") +".json", "w") as outfile: 
+        #    json.dump(response, outfile)
         data = defaultdict(dict)
         for data_type in response.keys():
             _LOGGER.debug("ds %s", data_type)
@@ -481,21 +525,26 @@ class SEVData:
                 for meter in data_set:
                     meter_id = meter["meter_id"]
                     last = meter["readings"][-1]
-                    value_sum = sum(r["reading"] for r in meter["readings"])
+                    value_sum_month = sum(r["reading"] for r in meter["readings"])
+                    day_values = list(filter(lambda x: datetime.strptime(x["time_stamp"], "%Y-%m-%dT%H:%M:%S")  > datetime.today(), meter["readings"]))
+                    value_sum_today = sum(r["reading"] for r in day_values)
                     data[meter_id][data_type] = { 
                         "time": last["time_stamp"],
                         "value": last["reading"]
                     }
                     data[meter_id][data_type + '_today'] = { 
                         "time": last["time_stamp"],
-                        "value": value_sum
+                        "value": value_sum_today
+                    }
+                    data[meter_id][data_type + '_month'] = { 
+                        "time": last["time_stamp"],
+                        "value": value_sum_month
                     }
                     if data_type=="kwh":
                         data[meter_id][data_type + '_total'] = { 
                         "time": last["time_stamp"],
                         "value": last["cumulative_value"]
                     }    
-                
         _LOGGER.debug("sensor data: %s", data)
         self.data = data
         
