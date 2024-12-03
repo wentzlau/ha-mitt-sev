@@ -12,9 +12,10 @@ Add this repository to HACKS via HACKS/user defined repositories
 
 ## Configuration
 Add the the sensor section below to configuration.yaml.
-    ```
-    sensor:    
-      - platform: mitt_sev
-		user_name: '[api user name]'
-		api_key: '[api key]'
-	```
+
+```
+sensor:    
+- platform: mitt_sev
+	user_name: '[api user name]'
+	api_key: '[api key]'
+```
