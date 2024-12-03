@@ -16,6 +16,6 @@ Add the the sensor section below to configuration.yaml.
 ```
 sensor:    
 - platform: mitt_sev
-    user_name: '[api user name]'
-    api_key: '[api key]'
+  user_name: '[api user name]'
+  api_key: '[api key]'
 ```
